@@ -35,6 +35,32 @@ Go to this Github page in your browser. Press on the green button that says `< >
 If not, find `AMD vivado installation` and pick up the version `2024.2`. You will need the Linux version even if you're on Windows! You'll also need AMD credentials, which you can ask me for. 
 Once you have downloaded the file, put it in the same folder as where you cloned the Github repo. Make sure it's inside `artiq-9-gateware-factory`.
 
+### Getting authenticated 
+
+You'll need to run the authentication script. Since you're using Windows, run PowerShell in the `artiq-9-gateware-factory` directory and copy-paste:
+```
+(Get-Content generate_auth_token.sh) -join "`n" + "`n" | Set-Content -NoNewline generate_auth_token.sh
+```
+
+```
+docker run --rm -it -v "${PWD}:/work" -w /work ubuntu:22.04 bash generate_auth_token.sh
+```
+
+You'll be prompted for a username and password (ask for mine if you don't have your own AMD account).
+
+### Building Vivado 
+
+Copy paste the following command:
+```
+docker build -t vivado-2024.2-env -f Dockerfile.vivado-base .
+```
+
+Leave it running for 1-2 hours. Once it finishes building, run
+```
+docker save vivado-2024.2-env | gzip > "$HOME\Documents\vivado-2024.2-env.tar" 
+```
+This turns it into a `tarball` so that you have it saved in case you need to build again (much faster next times).
+
 # Table of Contents
 
 - Introduction
