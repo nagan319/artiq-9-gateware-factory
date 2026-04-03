@@ -309,14 +309,14 @@ From AMD:
 **Process:**
 
 ```
-git clone https://github.org/nagan319/artiq-build-flash
-cd artiq-build-flash/artiq-9/
+git clone https://github.com/nagan319/artiq-9-gateware-factory
+cd artiq-9-gateware-factory
 ```
 
 Clone from Github.
 
 ```
-mv FPGAs_AdaptiveSoCs_Unified_2024.2_1113_2356_Lin64.bin ~/.../artiq-9/
+mv FPGAs_AdaptiveSoCs_Unified_2024.2_1113_2356_Lin64.bin ~/.../artiq-9-gateware-factory/
 ```
 
 Head to the AMD website and download the Vivado 2024.2 unified installer for Linux. Move it into this directory.
