@@ -2,6 +2,9 @@
 
 Documentation for successful compilation of Kasli V2 and Kasli SoC binaries using the M-Labs ARTIQ-9 Nix flake, carried out on 04/02/2026 and 04/03/2026 respectively.
 
+Similar setup for UCSB ARTIQ-8 setup (Kasli V2 / Artix-7 only):
+https://github.com/nagan319/artiq-build-flash
+
 # Table of Contents
 
 - Introduction
@@ -15,11 +18,13 @@ Documentation for successful compilation of Kasli V2 and Kasli SoC binaries usin
 
 # Introduction
 
-This is part 1-4 of 4 of the following process:
+This is part 1-3 of 4 of the following process:
 1. ✓ Get a working Kasli V2 / Artix-7 build using Docker / Vivado 2024.2 and the M-Labs default ARTIQ-9 Nix flake
 2. ✓ Get a working Kasli V2 / Artix-7 build using the `artiq-9-ucsb` Nix flake — build contains different versions of LLVM and is pinned to a stable release
 3. ✓ Get a working Kasli SoC / Kintex-7+Zynq build — requires `artiq-zynq` (separate M-Labs repo containing `kasli_soc.py` and Zynq PS firmware)
 4. Flash compiled Kasli V2 and SoC gateware onto experimental hardware and test
+
+In order to flash gateware binaries onto the hardware you will need a Nix shell set up; however, this does not require AMD Vivado and is much more straightforward.
 
 Both M-Labs and UCSB Kasli V2 builds are supported via a `--source` flag. Switching between them no longer requires editing any scripts — see the How section. Kasli SoC is detected automatically from the `target` field in the JSON and routed through the `artiq-zynq` build path.
 
