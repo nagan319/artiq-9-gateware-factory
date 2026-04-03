@@ -1,0 +1,67 @@
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    locales \
+    libtinfo5 \
+    libncurses5 \
+    libxtst6 \
+    libxrender1 \
+    libxi6 \
+    libfontconfig1 \
+    libxft2 \
+    xz-utils \
+    sudo \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Compile fake_udev stub inside the container so it links against the
+# container's libc. The .so is placed in /usr/local/lib for the thin
+# Dockerfile layer to later install as the system libudev.
+COPY fake_udev.c /tmp/fake_udev.c
+RUN gcc -shared -fPIC -o /usr/local/lib/fake_udev.so /tmp/fake_udev.c \
+    && rm /tmp/fake_udev.c
+
+RUN locale-gen en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV LANG=en_US.UTF-8
+
+COPY FPGAs_AdaptiveSoCs_Unified_2024.2_1113_2356_Lin64.bin /tmp/vivado_installer.bin
+COPY install_config.txt /tmp/install_config.txt
+COPY wi_authentication_key /root/.Xilinx/wi_authentication_key
+
+RUN chmod +x /tmp/vivado_installer.bin \
+    && /tmp/vivado_installer.bin --keep --noexec --target /tmp/vivado_extracted \
+    && /tmp/vivado_extracted/xsetup \
+        -a XilinxEULA,3rdPartyEULA \
+        -b Install \
+        -c /tmp/install_config.txt \
+    && rm -rf /tmp/vivado_installer.bin /tmp/vivado_extracted /root/.Xilinx
+
+RUN useradd -m -s /bin/bash builder \
+    && echo "builder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+USER builder
+WORKDIR /home/builder
+
+RUN curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh -s -- --no-daemon
+
+RUN mkdir -p /home/builder/.config/nix \
+    && echo "experimental-features = nix-command flakes" >> /home/builder/.config/nix/nix.conf
+
+# Pre-warm the Nix store with ARTIQ 9 dependencies during image build so the
+# first actual build run doesn't need to fetch everything from scratch.
+# || true because the shellHook sources Vivado settings which aren't available
+# in the Nix build sandbox — the package fetching still succeeds.
+COPY --chown=builder:builder flake.nix /home/builder/artiq-env/flake.nix
+RUN . /home/builder/.nix-profile/etc/profile.d/nix.sh \
+    && cd /home/builder/artiq-env \
+    && nix develop --build 2>&1 || true
+
+COPY --chown=builder:builder entrypoint.sh /home/builder/entrypoint.sh
+RUN chmod +x /home/builder/entrypoint.sh
+
+ENTRYPOINT ["/home/builder/entrypoint.sh"]
