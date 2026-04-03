@@ -5,6 +5,36 @@ Documentation for successful compilation of Kasli V2 and Kasli SoC binaries usin
 Similar setup for UCSB ARTIQ-8 setup (Kasli V2 / Artix-7 only):
 https://github.com/nagan319/artiq-build-flash
 
+# Caveman Guide
+
+I assume Windows is being used.
+
+## Installing Necessary Things 
+
+### Do you have Docker installed?
+
+If you do don't have Docker installed, you'll need to download it. Look for Docker install.
+
+### When you click on the Docker Desktop icon, can it start the Docker engine fine?
+
+If this is not fine, you probably have a setting called 'virtualization' disabled. You will need to restart your computer, spam F2/F9/F12 (try all of them) while the screen is black, and then navigate the menu to turn it off. Since this is slightly different on all setups you can take a picture and ask chat how to do this.  
+
+### Do you have Git installed?
+
+You can check this by going to the command prompt and typing `git --version`. 
+If you do not have it installed, search `git install windows` and run the installer.
+
+## Cloning from Github and Running
+
+### Cloning from Github
+
+Go to this Github page in your browser. Press on the green button that says `< > Code` and copy the link. Open your terminal in a folder where you want to run this and type `git clone` plus the pasted URL.
+
+### Obtaining AMD Vivado binary
+
+If not, find `AMD vivado installation` and pick up the version `2024.2`. You will need the Linux version even if you're on Windows! You'll also need AMD credentials, which you can ask me for. 
+Once you have downloaded the file, put it in the same folder as where you cloned the Github repo. Make sure it's inside `artiq-9-gateware-factory`.
+
 # Table of Contents
 
 - Introduction
