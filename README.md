@@ -155,11 +155,15 @@ The location will be `../[CONFIG NAME].json` or `../json-configs/[CONFIG NAME].j
 
 Your files will appear in `artiq-9-gateware-factory/output/[CONFIG NAME]`.
 
-You can copy them back to windows using the following command:
+You can copy them back to Windows using the following command:
 ```
 cp -r /output/[CONFIG NAME] /mnt/c/Users/[USER]/Downloads/
 ```
+This will allow you to see the files in File Explorer by clicking around the folders.
+
 Just make sure you don't have multiple copies with the same title so that they don't get overwritten or combined into one folder.
+
+After you're done you can type `exit`, or just close the terminal. Your files will be in your `Downloads` folder (or wherever you put them).
 
 # DevOps Guide
 
