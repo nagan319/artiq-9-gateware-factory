@@ -7,13 +7,40 @@ https://github.com/nagan319/artiq-build-flash
 
 # Caveman Guide
 
-I assume Windows is being used.
+I assume Windows is being used. Note that many of the commands here will take a long time (like hours) so be ready. 
+
+If some poor soul has already set this up on your machine, skip to the part "Building Gateware".
+
+Before you start, go to your system settings and find the option 'sleep' or similar and select 'never' so that your computer doesn't fall asleep while compiling something.
 
 ## Installing Necessary Things 
 
+### Do you have WSL installed?
+
+If not, you'll need to get it. You can check whether you have it by typing `wsl --version` in PowerShell. 
+
+To install the things we need, type 
+```
+wsl --install
+wsl --install -d Ubuntu
+```
+
+It wil ask you to type a username and password so just set something you won't forget.
+
+After this is done type 
+```
+sudo apt update
+```
+
+Then type the following commands
+```
+exit
+wsl --set-default Ubuntu
+```
+
 ### Do you have Docker installed?
 
-If you do don't have Docker installed, you'll need to download it. Look for Docker install.
+If you do don't have Docker installed, you'll need to download it. Search for `Docker install Windows`.
 
 ### When you click on the Docker Desktop icon, can it start the Docker engine fine?
 
@@ -24,26 +51,62 @@ If this is not fine, you probably have a setting called 'virtualization' disable
 You can check this by going to the command prompt and typing `git --version`. 
 If you do not have it installed, search `git install windows` and run the installer.
 
-## Cloning from Github and Running
+### Allowing Docker inside WSL
+
+Type `exit` if you're still in the WSL prompt (`user@...`). 
+
+Click on the Docker Desktop icon. 
+
+Go to the settings (spinny gear on top right). 
+
+Go to 'General' and make sure 'Use the WSL 2 based engine' is checked. 
+
+Go to 'Resources' then 'WSL integration'. Make sure that 'Ubuntu' is toggled on under 'Enable integration with additional distros'.
+
+Now click 'Apply and Restart' on in the bottom right corner. 
+
+Now type `wsl` in PowerShell and type `docker --version`. If it gives you a version you're all good.
+
+## Cloning from Github and Building Vivado 
 
 ### Cloning from Github
 
-Go to this Github page in your browser. Press on the green button that says `< > Code` and copy the link. Open your terminal in a folder where you want to run this and type `git clone` plus the pasted URL.
+Go to this Github page in your browser. Press on the green button that says `< > Code` and copy the link. 
+
+Go to PowerShell and type `wsl`.
+
+Now run the following commands:
+```
+cd ~
+mkdir -p artiq-gateware-factory
+cd artiq-gateware-factory
+git clone [COPIED LINK]
+```
 
 ### Obtaining AMD Vivado binary
 
-If not, find `AMD vivado installation` and pick up the version `2024.2`. You will need the Linux version even if you're on Windows! You'll also need AMD credentials, which you can ask me for. 
+Now it's time to get the AMD Vivado binary.
+
+If not, find `AMD vivado installation` and pick up the version `2024.2`. You will need the Linux version even if you're on Windows! 
+
+The correct title is `FPGAs_AdaptiveSoCs_Unified_2024.2 ... Lin64.bin`.
+
+You'll also need AMD credentials, which you can ask me for. 
+
 Once you have downloaded the file, put it in the same folder as where you cloned the Github repo. Make sure it's inside `artiq-9-gateware-factory`.
+
+The way you do this is (within `wsl`)
+```
+mv /mnt/c/Users/scientist/Downloads/FPGAs...Lin64.bin ~/artiq-gateware-factory/artiq-9-gateware-factory
+```
 
 ### Getting authenticated 
 
-You'll need to run the authentication script. Since you're using Windows, run PowerShell in the `artiq-9-gateware-factory` directory and copy-paste:
-```
-(Get-Content generate_auth_token.sh) -join "`n" + "`n" | Set-Content -NoNewline generate_auth_token.sh
-```
+Make sure you're in `artiq-9-gateware-factory` and still in `wsl`.
 
+Now run:
 ```
-docker run --rm -it -v "${PWD}:/work" -w /work ubuntu:22.04 bash generate_auth_token.sh
+./generate-auth-token.sh
 ```
 
 You'll be prompted for a username and password (ask for mine if you don't have your own AMD account).
@@ -57,9 +120,34 @@ docker build -t vivado-2024.2-env -f Dockerfile.vivado-base .
 
 Leave it running for 1-2 hours. Once it finishes building, run
 ```
-docker save vivado-2024.2-env | gzip > "$HOME\Documents\vivado-2024.2-env.tar" 
+docker save vivado-2024.2-env | gzip > "~/vivado-2024.2-env.tar" 
 ```
 This turns it into a `tarball` so that you have it saved in case you need to build again (much faster next times).
+
+## Building Gateware
+
+After you download the `.json` config files for the gateware, do the following:
+```
+wsl
+mv /mnt/c/Users/[USER]/Downloads/[CONFIG NAME].json ~
+```
+
+If you want you can make a separate directory for gateware configs:
+```
+cd ~
+mkdir -p ~/json-configs/
+mv *.json json-configs
+```
+
+Now you can run the build script:
+```
+cd ~/artiq-gateware-factory/artiq-9-gateware-factory
+./build [CONFIG LOCATION].json
+```
+
+The location will be `../[CONFIG NAME].json` or `../json-configs/[CONFIG NAME].json` depending on how it's hooked up.
+
+Your files will appear in `artiq-9-gateware-factory/output/[CONFIG NAME]`.
 
 # Table of Contents
 
