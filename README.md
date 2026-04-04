@@ -5,11 +5,17 @@ Documentation for successful compilation of Kasli V2 and Kasli SoC binaries usin
 Similar setup for UCSB ARTIQ-8 setup (Kasli V2 / Artix-7 only):
 https://github.com/nagan319/artiq-build-flash
 
+## Note on README Structure:
+
+The first part, 'Caveman Guide', assumes you are a PhD student either a) setting everythin up from scratch or b) compiling binaries from a ready setup on a Windows 11 workstation. It is very short and does not explain why any decisions were made. 
+
+The second part, 'DevOps Guide', assumes you are proficient with Linux and comfortable with the idea of learning Nix, Docker, etc. for the purpose of modifying or improving upon this configuration. It describes all decisions made in detail.
+
 # Caveman Guide
 
 I assume Windows is being used. Note that many of the commands here will take a long time (like hours) so be ready. 
 
-If some poor soul has already set this up on your machine, skip to the part "Building Gateware".
+If some poor soul has already set this up on your machine, skip to "Building Gateware".
 
 Before you start, go to your system settings and find the option 'sleep' or similar and select 'never' so that your computer doesn't fall asleep while compiling something.
 
@@ -148,6 +154,12 @@ cd ~/artiq-gateware-factory/artiq-9-gateware-factory
 The location will be `../[CONFIG NAME].json` or `../json-configs/[CONFIG NAME].json` depending on how it's hooked up.
 
 Your files will appear in `artiq-9-gateware-factory/output/[CONFIG NAME]`.
+
+Once they are there, you can move them back into Windows using `mv top.bit /mtn/c/Users/[USERNAME]/Downloads/` and similar.
+
+# DevOps Guide
+
+I assume Linux is being used and give detailed explanations of how things work. 
 
 # Table of Contents
 
