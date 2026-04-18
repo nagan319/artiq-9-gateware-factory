@@ -1,4 +1,10 @@
-# Building and Flashing ARTIQ 9 FPGA Binaries (Kasli V2 / Artix-7 and Kasli SoC / Kintex-7+Zynq) Using AMD Vivado 2024.2 and Docker / Ubuntu 22.04 - Rev 04/03/26
+# Building and Flashing ARTIQ 9 FPGA Binaries (Kasli V2 / Artix-7 and Kasli SoC / Kintex-7+Zynq) Using AMD Vivado 2024.2 and Docker / Ubuntu 22.04 - Rev 04/17/26
+
+## Todo:
+- set up UCSB nix flake properly 
+- write command to do tedious WSL setup as much as possible 
+- do artiq_flash script rewrite accounting for middleware 
+- figure out which particular commit to pull from
 
 Documentation for successful compilation of Kasli V2 and Kasli SoC binaries using the M-Labs ARTIQ-9 Nix flake, carried out on 04/02/2026 and 04/03/2026 respectively.
 
@@ -72,6 +78,17 @@ Go to 'Resources' then 'WSL integration'. Make sure that 'Ubuntu' is toggled on 
 Now click 'Apply and Restart' on in the bottom right corner. 
 
 Now type `wsl` in PowerShell and type `docker --version`. If it gives you a version you're all good.
+
+### Installing Nix Inside WSL 
+
+You'll need to use Nix inside WSL if you want to flash your gateware from the same device as where you build it.
+
+Run:
+```
+curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install 
+```
+
+Now open a new WSL shell (cmd and type `wsl`) and type `nix --version` to check that you have it.
 
 ## Cloning from Github and Building Vivado 
 
@@ -164,6 +181,87 @@ This will allow you to see the files in File Explorer by clicking around the fol
 Just make sure you don't have multiple copies with the same title so that they don't get overwritten or combined into one folder.
 
 After you're done you can type `exit`, or just close the terminal. Your files will be in your `Downloads` folder (or wherever you put them).
+
+If everything on your system has been configured and you now want to flash your binaries to the ARTIQ crate, go to 'flashing gateware'.
+
+## Setting Up Gateware Flash Utilities
+
+This section has instructions for setting up necessary USB permissions so you can flash the binaries to your ARTIQ crate.
+
+Go to PowerShell and make sure you have a USB listing utility called `usbipd`. This is what's used on PowerShell to list plugged in devices.
+
+You can install and verify you have it using the following commands in an admin shell. To open an admin shell, right-click on the PowerShell option in CMD '+' button and select 'Run as Administrator'.
+
+```
+winget install usbipd
+usbipd --version 
+```
+
+You will now need to run WSL and install some things on that side:
+```
+wsl
+sudo apt install usbutils
+sudo apt install linux-tools-virtual
+```
+
+Make sure the command `usbip` works when typed in console
+```
+sudo ln -sf "$(find /usr/lib/linux-tools -name usbip | tail -1)" /usr/local/bin/usbip
+```
+
+Another step is to copy a temporary file ARTIQ uses for flashing to a place where it can see it.
+
+Run the following steps in WSL:
+```
+find /nix/store -name "bscan_spi_xc7a100t.bit" 2>/dev/null
+```
+
+Then copy the filepath it gives you to `~/artiq-gateware-factory/artiq-9-gateware-factory`. For example:
+```
+cd ~/artiq-gateware-factory/artiq-9-gateware-factory
+cp /nix/store/.../share/bscan-spi-bitstreams/bscan_spi_xc7a100t.bit .
+```
+
+Now copy tihs to some 'backup' folders where the system tries to find this file:
+```
+mkdir -p ~/.migen
+cp bscan_spi_xc7a100t.bit ~/.migen/
+
+sudo mkdir -p /root/.migen 
+sudo cp bscan_spi_xc7a100t.bit /root/.migen/
+```
+
+## Flashing Gateware (Kalsi V2)
+
+Get your Kasli V2 crate, plug in power and connect to your (Windows) device using a USB-B to USB-A wire. Make sure the lights are turned on.
+
+Open PowerShell as an admin and run:
+```
+usbipd list
+```
+You should see something labeled `... USB Serial Converter B ...`. This is the right port. You'll see a `BUSID` in the left column of the listed table. Use this value and run
+```
+usbipd bind --busid [BUSID]
+usbipd attach --wsl --busid [BUSID]
+```
+You'll get an output like `Using WSL Distribution 'Ubuntu' to attach...`. This allows you to use WSL for interacting with this port.
+
+Open a new cmd prompt and run the following:
+```
+wsl 
+lsusb 
+```
+You'll see something like `Future Technology Devices ...`. This is the ARTIQ crate.
+
+Run the Nix shell for flashing ARTIQ. Replace `output/[CONFIG]` with the location of your config files:
+```
+sudo env "PATH=$PATH" nix shell \
+    git+https://git.m-labs.hk/M-Labs/artiq.git?ref=release-9#artiq \
+    git+https://git.h-labs.hk/M-Labs/artiq.git?ref=release-9#openocd-bscanspi \
+    --command artiq_flash -t kasli -d output/[CONFIG] --srcbuild write=gateware,bootloader,firmware
+```
+
+You'll get a bunch of `Info : sector ...` messages, which means that the gateware is being flashed.
 
 # DevOps Guide
 

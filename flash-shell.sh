@@ -4,7 +4,7 @@
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sources.conf"
 
-SOURCE="ucsb"
+SOURCE="m-labs"
 
 for arg in "$@"; do
     case $arg in
