@@ -263,6 +263,53 @@ sudo env "PATH=$PATH" nix shell \
 
 You'll get a bunch of `Info : sector ...` messages, which means that the gateware is being flashed.
 
+## Troubleshooting Flash 
+
+After flashing, it's not actually trivial to connect to the crate using Wifi. 
+
+There are a few troubleshooting steps that can be taken to make sure its configured correctly.
+
+Enter the Nix shell again:
+```
+sudo env "PATH=$PATH" nix shell \
+    git+https://git.m-labs.hk/M-Labs/artiq.git?ref=release-9#artiq \
+    git+https://git.h-labs.hk/M-Labs/artiq.git?ref=release-9#openocd-bscanspi \
+```
+
+Make sure it's activated (you should see a file location pop up for this command)
+```
+which artiq_flash
+```
+
+Testing to see if the Kasli is visible:
+```
+openocd -f board/kasli.cfg
+```
+After you get an output like 'listening on port ...', press Ctrl+C to exit. 
+
+Test to see the ARTIQ boot sequence:
+
+You'll need to get something like `minicom` to read USB IO
+```
+sudo apt install minicom 
+```
+
+Now open a port (try changing the USB number to 1 or 3 if 2 doesn't work)
+```
+sudo minicom -D /dev/ttyUSB2 -b 115200
+```
+Turn on carriage return (proper display) using Ctrl+Z A U.
+
+Turn off the Kasli and turn it back on again. You should see text appear.
+
+Look at the IP displayed in the output. This is the real IP! It might actually be different from your config IP, because the config IP gets overriden by another value inside the crate.
+
+You can ping this IP, for example 
+```
+ping 192.168.1.86
+```
+If this works, your ARTIQ crate is fully online.
+
 # DevOps Guide
 
 I assume Linux is being used and give detailed explanations of how things work. 
