@@ -257,7 +257,7 @@ Run the Nix shell for flashing ARTIQ. Replace `output/[CONFIG]` with the locatio
 ```
 sudo env "PATH=$PATH" nix shell \
     git+https://git.m-labs.hk/M-Labs/artiq.git?ref=release-9#artiq \
-    git+https://git.h-labs.hk/M-Labs/artiq.git?ref=release-9#openocd-bscanspi \
+    git+https://git.m-labs.hk/M-Labs/artiq.git?ref=release-9#openocd-bscanspi \
     --command artiq_flash -t kasli -d output/[CONFIG] --srcbuild write=gateware,bootloader,firmware
 ```
 
