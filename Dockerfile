@@ -11,7 +11,7 @@ RUN ln -s /tools/Xilinx /opt/Xilinx
 # sandbox is a privileged Nix setting — only takes effect from the system-level
 # config written as root. The sipyco test suite opens loopback TCP connections
 # which the Nix sandbox blocks, preventing the entire shell environment from building.
-RUN mkdir -p /etc/nix && echo "sandbox = false" >> /etc/nix/nix.conf
+RUN mkdir -p /etc/nix && printf 'sandbox = false\nexperimental-features = nix-command flakes\nbuild-users-group =\nextra-substituters = https://nixbld.m-labs.hk\nextra-trusted-public-keys = nixbld.m-labs.hk-1:5aSRVA5b320xbNvu30tqxVPXpld73bhtOeH6uAjRyHc=\n' > /etc/nix/nix.conf
 USER builder
 RUN mkdir -p /home/builder/.Xilinx/Vivado
 COPY --chown=builder:builder Vivado_init.tcl /home/builder/.Xilinx/Vivado/Vivado_init.tcl

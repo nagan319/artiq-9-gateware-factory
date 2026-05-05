@@ -37,13 +37,8 @@ if ! docker image inspect "vivado-2024.2-env" &>/dev/null; then
     exit 1
 fi
 
-if ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
-    echo "==> Building ARTIQ builder image..."
-    docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
-else
-    echo "==> Using cached Docker image '$IMAGE_NAME'"
-    echo "    (Run 'docker rmi $IMAGE_NAME' to rebuild without touching Vivado)"
-fi
+echo "==> Building ARTIQ builder image (uses Docker layer cache, only changed layers rebuilt)..."
+docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
 
 # Seed the Nix store volume from the base image on first use.
 # The volume is mounted at /nix inside the container, which shadows the Nix
@@ -72,8 +67,8 @@ echo "    Output: $OUTPUT_DIR"
 echo ""
 
 docker run --rm \
+    --privileged \
     --shm-size=2g \
-    --security-opt seccomp=unconfined \
     -v artiq9-nix-store:/nix \
     -v "${JSON_DIR}/${JSON_FILENAME}:/input/${JSON_FILENAME}:ro" \
     -v "${OUTPUT_DIR}:/output" \

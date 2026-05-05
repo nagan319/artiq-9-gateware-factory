@@ -170,7 +170,7 @@ cd ~/artiq-gateware-factory/artiq-9-gateware-factory
 
 The location will be `../[CONFIG NAME].json` or `../json-configs/[CONFIG NAME].json` depending on how it's hooked up.
 
-Your files will appear in `artiq-9-gateware-factory/output/[CONFIG NAME]`.
+Your files will appear in `artiq-9-gateware-factory/output/[CONFIG NAME]/` (the subfolder name matches the JSON filename without `.json`).
 
 You can copy them back to Windows using the following command:
 ```
@@ -383,14 +383,14 @@ Result (Kasli V2):
 
 Result (Kasli SoC):
 ```
-  top.bit (1.6MB) — valid. Header reads top;COMPRESS=TRUE;Version=2024.2, part xc7z030ffg676.
-  Correct Zynq-7030 bitstream. DRC: 0 errors. Timing met.
+  top.bit (3.1MB) — valid. Zynq-7030 bitstream. DRC: 0 errors.
+  Timing met: WNS=0.235 ns, WHS=0.017 ns, zero failing endpoints.
 
-  runtime.bin (1.6MB) — ARM Cortex-A9 firmware for the Zynq PS.
-  runtime.elf (11MB) — ELF with debug symbols for the above.
+  runtime.bin (1.7MB) — ARM Cortex-A9 firmware for the Zynq PS.
+  runtime.elf (14MB) — ELF with debug symbols for the above.
 
   jtag/ — szl.elf + runtime.bin + top.bit, for JTAG boot via OpenOCD.
-  sd/boot.bin (3.4MB) — Combined Xilinx boot image (SZL + bitstream + firmware) for SD card boot.
+  sd/boot.bin — Combined Xilinx boot image (SZL + bitstream + firmware) for SD card boot.
 ```
 
 # What About the M-Labs Guide?
@@ -550,7 +550,9 @@ For Kasli SoC builds, the output directory will contain:
 - `jtag/` — files for JTAG boot (szl.elf + runtime.bin + top.bit)
 - `sd/boot.bin` — combined Xilinx boot image for SD card
 
-For Kasli V2 builds, the output is inside `output/<variant>/gateware/` and `output/<variant>/software/`.
+For Kasli V2 builds, the output is inside `output/<json-name>/gateware/` and `output/<json-name>/software/`, where `<json-name>` is the JSON filename without `.json`.
+
+Regardless of build target, the flake URL and build metadata are recorded in `output/nix-flakes/<json-name>/` for version tracking and reproducibility.
 
 ## 2: Adding or updating an ARTIQ Nix flake source
 This is if you want to add a new flake source or update the pinned commit for an existing one.
@@ -794,8 +796,8 @@ We run a check to see whether the `vivado-2024.2-env` image exists on the device
 
 ```bash
 docker run --rm \
+    --privileged \
     --shm-size=2g \
-    --security-opt seccomp=unconfined \
     -v artiq9-nix-store:/nix \
     -v "${JSON_DIR}/${JSON_FILENAME}:/input/${JSON_FILENAME}:ro" \
     -v "${OUTPUT_DIR}:/output" \
@@ -807,8 +809,8 @@ docker run --rm \
 This launches the container and passes both the `--source` flag and the JSON filename to `entrypoint.sh`. `docker run` parameters:
 
 - `--rm`: Deletes the container when it exits. This prevents a buildup of unused containers on the host system.
+- `--privileged`: Grants the full Linux capability set to the container. Required for Kasli SoC builds, where the `artiq-zynq` Vivado FHS wrapper calls `bubblewrap` (`bwrap`) to create a mount namespace (`CLONE_NEWNS`). Docker containers do not have `CAP_SYS_ADMIN` by default, which is required for mount namespace creation. Kasli V2 builds run Vivado directly without bwrap, but `--privileged` is kept unconditionally so the same command works for both targets.
 - `--shm-size=2g`: Sets `/dev/shm` (shared memory) to 2 GB. Vivado's router relies on this shared memory. Docker sets it to 64 MB by default, which leads to segmentation faults.
-- `--security-opt seccomp=unconfined`: Removes Docker's default seccomp syscall filter. This is required for Kasli SoC builds, where the Nix build sandbox and the `artiq-zynq` Vivado FHS wrapper both use `bubblewrap` (`bwrap`) to create isolated filesystem namespaces. `bwrap` requires the `unshare` syscall, which Docker's default seccomp profile blocks. Kasli V2 builds work without this flag since they run Vivado directly outside the Nix sandbox, but it is kept unconditionally so the same command works for both targets.
 - `-v artiq9-nix-store:/nix`: Mounts the named Docker volume `artiq9-nix-store` at `/nix` within the container. Stores all ARTIQ dependencies from the Nix flake so they don't need to be re-fetched on every build.
 - `-v "${JSON_DIR}/${JSON_FILENAME}:/input/${JSON_FILENAME}:ro"`: Bind mounts the input `json` file at `/input` inside the container, read-only.
 - `-v "${OUTPUT_DIR}:/output"`: Bind mounts the output directory for persistent storage of built binaries.
@@ -834,9 +836,19 @@ nix develop "$FLAKE_URL" --impure --command bash -c "
     export LD_PRELOAD=/usr/local/lib/fake_udev.so
     python3 -m artiq.gateware.targets.${TARGET} ${INPUT_PATH} --output-dir /output
 "
+
+# Rename variant-named dir to JSON-named dir
+if [ -n "$VARIANT" ] && [ "$VARIANT" != "$JSON_BASE" ] && [ -d "/output/$VARIANT" ]; then
+    rm -rf "/output/$JSON_BASE"
+    mv "/output/$VARIANT" "/output/$JSON_BASE"
+fi
 ```
 
 `nix develop` fetches the main ARTIQ flake at the pinned commit, opens a shell with all ARTIQ dependencies available, sources Vivado 2024.2, installs the udev stub via `LD_PRELOAD`, and invokes the Python gateware builder. `--impure` loosens Nix's sandbox to allow access to Vivado at `/tools/Xilinx`.
+
+The Python gateware builder names its output subdirectory after the `"variant"` field in the JSON, not the JSON filename. The rename step moves that directory to match the JSON filename, so output paths are always `output/<json-name>/` regardless of what `"variant"` is set to.
+
+After the build, `nix flake metadata --json` is run against the flake URL and saved to `output/nix-flakes/<json-name>/flake-metadata.json` alongside a `build-info.txt` recording the date, source, and flake URL. For kasli_soc builds the generated `wrapper-flake.nix` is also preserved there.
 
 **For `kasli_soc`:**
 ```bash
@@ -973,30 +985,67 @@ The `artiq-zynq` flake's Vivado FHS wrapper expects Vivado at `/opt/Xilinx/Vivad
 
 Kasli SoC builds failed inside Docker with:
 ```
-bwrap: No permissions to creating new namespace, likely because the kernel does not allow
-non-privileged user namespaces.
+bwrap: Creating new namespace failed: Operation not permitted
 ```
 
-The `artiq-zynq` Vivado FHS wrapper uses `bubblewrap` (`bwrap`) to construct a fake FHS root inside the Nix build sandbox. `bwrap` needs to create user namespaces (`unshare` syscall), which Docker's default seccomp profile blocks. The fix is `--security-opt seccomp=unconfined` in the `docker run` invocation.
+The `artiq-zynq` Vivado FHS wrapper uses `buildFHSEnv` which calls `bubblewrap` (`bwrap`) to construct a mount namespace for the fake FHS root needed by Vivado. Even running as root inside the container, Docker's default capability set does not include `CAP_SYS_ADMIN`, which is required for `CLONE_NEWNS` (mount namespace creation). The fix is `--privileged` in the `docker run` invocation, which grants the full Linux capability set to the container.
 
 ## sipyco Test Failures Blocking the Build
 
-`nix develop` builds every package in the shell environment before opening it, including `sipyco` (ARTIQ's RPC library). `sipyco`'s test suite opens TCP connections on localhost to exercise its RPC layer. Nix's build sandbox blocks all network access including loopback, so those tests fail with:
+`nix develop` / `nix build` compile every package in the dependency graph, including `sipyco` (ARTIQ's RPC library). `sipyco`'s test suite opens TCP connections on localhost to exercise its asyncio RPC layer. The asyncio tests consistently fail inside Docker with ECONNREFUSED, even when loopback networking is available, likely due to a Python 3.13 asyncio race condition in the test server startup:
 
 ```
 OSError: Multiple exceptions: [Errno 111] Connect call failed ('::1', 7777, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 7777)
 FAILED (errors=4)
 ```
 
-This cascades: `sipyco` → `artiq` → `artiq-comtools` → `artiq-boards-shell-env`, aborting the entire build.
+This cascades: `sipyco` → `artiq` → the gateware derivation, aborting the entire build.
 
-Two fixes are applied together. First, `sandbox` is a privileged Nix setting — passing `--option sandbox false` on the command line or writing it to `~/.config/nix/nix.conf` as the `builder` user has no effect. It only takes effect from the system-level config written as root. The thin `Dockerfile` adds:
+The fix is to pull `sipyco` (and all other ARTIQ packages) from the M-Labs binary cache instead of building them locally — pre-built packages have no test phase. The M-Labs cache is at `https://nixbld.m-labs.hk`.
+
+The cache must be configured in two places. First, the thin `Dockerfile` writes it into the system-level Nix config (which root reads) alongside the other required settings:
 
 ```dockerfile
-RUN mkdir -p /etc/nix && echo "sandbox = false" >> /etc/nix/nix.conf
+RUN mkdir -p /etc/nix && printf \
+  'sandbox = false\nexperimental-features = nix-command flakes\nbuild-users-group =\n\
+extra-substituters = https://nixbld.m-labs.hk\n\
+extra-trusted-public-keys = nixbld.m-labs.hk-1:5aSRVA5b320xbNvu30tqxVPXpld73bhtOeH6uAjRyHc=\n' \
+  > /etc/nix/nix.conf
 ```
 
-Second, `--accept-flake-config` is added to the `nix develop` invocation in `entrypoint.sh`. This tells Nix to honour the M-Labs flake's `nixConfig`, which points at their binary cache. Pre-built packages are downloaded from the cache rather than compiled from source, sidestepping the test failure entirely when the cache is reachable. The sandbox fix remains as a fallback for when the cache is unavailable and Nix must build from source.
+Second, the wrapper `flake.nix` generated by `entrypoint.sh` for kasli_soc builds includes a `nixConfig` block so that `--accept-flake-config` picks it up for that build path:
+
+```nix
+nixConfig = {
+  extra-substituters = "https://nixbld.m-labs.hk";
+  extra-trusted-public-keys = "nixbld.m-labs.hk-1:5aSRVA5b320xbNvu30tqxVPXpld73bhtOeH6uAjRyHc=";
+};
+```
+
+Without both entries, `nix build` on the wrapper flake only uses the nixos.org cache, builds sipyco from source, and hits the test failure. The artiq-zynq flake does specify the M-Labs cache in its own `nixConfig`, but `--accept-flake-config` only applies the `nixConfig` from the flake currently being built — not from its inputs — so the artiq-zynq cache config is invisible to our wrapper flake without the explicit re-declaration.
+
+`sandbox = false` remains in `nix.conf`. It is a privileged Nix setting — writing it to `~/.config/nix/nix.conf` as the `builder` user has no effect; it only takes effect from the system-level config written as root. It disables Nix's build sandbox so that local builds (when the cache misses) have full network access.
+
+## Dockerfile Changes Not Applied to Running Builds
+
+`build.sh` previously checked whether `artiq9-builder` existed and skipped `docker build` if it did:
+
+```bash
+if ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
+    docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+fi
+```
+
+This meant any change to the `Dockerfile`, `entrypoint.sh`, or `sources.conf` was silently ignored on subsequent runs — the stale image was reused. Nix configuration changes (e.g. adding the M-Labs binary cache to `/etc/nix/nix.conf`) written into the `Dockerfile` had no effect until the image was manually deleted with `docker rmi artiq9-builder`.
+
+The fix is to always run `docker build`. Docker's own layer cache makes this efficient — unchanged layers are reused, and only the layers downstream of a change are rebuilt:
+
+```bash
+echo "==> Building ARTIQ builder image (uses Docker layer cache, only changed layers rebuilt)..."
+docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+```
+
+When updating `Dockerfile`, `entrypoint.sh`, or `sources.conf`, no manual `docker rmi` is needed — the next `./build.sh` run picks up the change automatically.
 
 ## Nix Store Volume Shadowing
 
@@ -1007,6 +1056,26 @@ On first run on a new machine, the `artiq9-nix-store` named volume starts empty.
 ```
 
 The fix, added to `build.sh`, is to detect an empty volume before the main build run and seed it by copying the image's `/nix` into the volume — mounting the volume at `/nix-target` rather than `/nix` so the image's own store remains accessible during the copy. Subsequent runs find the volume already populated and skip the seeding step.
+
+## Output Directory Named After Variant, Not JSON Filename
+
+For Kasli V2 (`kasli`) builds, the ARTIQ Python gateware script (`artiq.gateware.targets.kasli`) creates its output subdirectory using the `"variant"` field from the JSON, not the JSON filename. For example, building `laser_satellite_ucsb5.json` with `"variant": "ucsb5satellite"` produced output at `output/ucsb5satellite/`, while the JSON that drove the build was named `laser_satellite_ucsb5.json`.
+
+This is a mismatch: the natural key for a build is its input JSON, but the output was named after an internal field that the user has no particular reason to keep synchronized with the filename.
+
+The fix in `entrypoint.sh` is to extract the `"variant"` field with `grep`, then after the Python script completes, rename `output/$VARIANT` to `output/$JSON_BASE` if the two differ:
+
+```bash
+VARIANT=$(grep -oP '"variant"\s*:\s*"\K[^"]+' "$INPUT_PATH" 2>/dev/null || echo "")
+JSON_BASE="${JSON_FILE%.json}"
+# ... build runs, creating /output/$VARIANT/ ...
+if [ -n "$VARIANT" ] && [ "$VARIANT" != "$JSON_BASE" ] && [ -d "/output/$VARIANT" ]; then
+    rm -rf "/output/$JSON_BASE"
+    mv "/output/$VARIANT" "/output/$JSON_BASE"
+fi
+```
+
+Kasli SoC builds are not affected — they write directly to the specified output path.
 
 ## Nix Store File Permissions
 
