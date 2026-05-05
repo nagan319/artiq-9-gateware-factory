@@ -45,6 +45,25 @@ else
     echo "    (Run 'docker rmi $IMAGE_NAME' to rebuild without touching Vivado)"
 fi
 
+# Seed the Nix store volume from the base image on first use.
+# The volume is mounted at /nix inside the container, which shadows the Nix
+# store baked into the image. On a fresh volume, ~/.nix-profile symlinks and
+# the nix binary itself are both broken.
+if ! docker run --rm \
+        --entrypoint /bin/sh \
+        -v artiq9-nix-store:/nix \
+        vivado-2024.2-env \
+        -c "test -d /nix/var/nix/profiles/per-user/builder" \
+        &>/dev/null; then
+    echo "==> Seeding Nix store volume from image (first run — may take a few minutes)..."
+    docker run --rm \
+        --user root \
+        --entrypoint /bin/sh \
+        -v artiq9-nix-store:/nix-target \
+        vivado-2024.2-env \
+        -c "cp -a /nix/. /nix-target/"
+fi
+
 echo ""
 echo "==> Building ARTIQ binaries..."
 echo "    Source: $SOURCE"

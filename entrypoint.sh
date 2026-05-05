@@ -108,7 +108,7 @@ EOF
     install -m 644 "$TMPDIR/result-sd/boot.bin"             /output/sd/boot.bin
 
 else
-    nix develop "$FLAKE_URL" --impure --command bash -c "
+    nix develop "$FLAKE_URL" --accept-flake-config --impure --command bash -c "
         source /tools/Xilinx/Vivado/2024.2/settings64.sh
         export LD_PRELOAD=/usr/local/lib/fake_udev.so
         python3 -m artiq.gateware.targets.${TARGET} ${INPUT_PATH} --output-dir /output

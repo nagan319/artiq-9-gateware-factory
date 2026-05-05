@@ -112,7 +112,7 @@ Now it's time to get the AMD Vivado binary.
 
 If not, find `AMD vivado installation` and pick up the version `2024.2`. You will need the Linux version even if you're on Windows! 
 
-The correct title is `FPGAs_AdaptiveSoCs_Unified_2024.2 ... Lin64.bin`.
+The file name on the website is  `AMD Unified Installer for FPGAs & Adaptive SoCs 2024.2: Linux Self Extracting Web Installer`. The filename is `FPGAs_AdaptiveSoCs_Unified_2024.2 ... Lin64.bin`.
 
 You'll also need AMD credentials, which you can ask me for. 
 
@@ -165,7 +165,7 @@ mv *.json json-configs
 Now you can run the build script:
 ```
 cd ~/artiq-gateware-factory/artiq-9-gateware-factory
-./build [CONFIG LOCATION].json
+./build.sh [CONFIG LOCATION].json
 ```
 
 The location will be `../[CONFIG NAME].json` or `../json-configs/[CONFIG NAME].json` depending on how it's hooked up.
@@ -979,6 +979,35 @@ non-privileged user namespaces.
 
 The `artiq-zynq` Vivado FHS wrapper uses `bubblewrap` (`bwrap`) to construct a fake FHS root inside the Nix build sandbox. `bwrap` needs to create user namespaces (`unshare` syscall), which Docker's default seccomp profile blocks. The fix is `--security-opt seccomp=unconfined` in the `docker run` invocation.
 
+## sipyco Test Failures Blocking the Build
+
+`nix develop` builds every package in the shell environment before opening it, including `sipyco` (ARTIQ's RPC library). `sipyco`'s test suite opens TCP connections on localhost to exercise its RPC layer. Nix's build sandbox blocks all network access including loopback, so those tests fail with:
+
+```
+OSError: Multiple exceptions: [Errno 111] Connect call failed ('::1', 7777, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 7777)
+FAILED (errors=4)
+```
+
+This cascades: `sipyco` → `artiq` → `artiq-comtools` → `artiq-boards-shell-env`, aborting the entire build.
+
+Two fixes are applied together. First, `sandbox` is a privileged Nix setting — passing `--option sandbox false` on the command line or writing it to `~/.config/nix/nix.conf` as the `builder` user has no effect. It only takes effect from the system-level config written as root. The thin `Dockerfile` adds:
+
+```dockerfile
+RUN mkdir -p /etc/nix && echo "sandbox = false" >> /etc/nix/nix.conf
+```
+
+Second, `--accept-flake-config` is added to the `nix develop` invocation in `entrypoint.sh`. This tells Nix to honour the M-Labs flake's `nixConfig`, which points at their binary cache. Pre-built packages are downloaded from the cache rather than compiled from source, sidestepping the test failure entirely when the cache is reachable. The sandbox fix remains as a fallback for when the cache is unavailable and Nix must build from source.
+
+## Nix Store Volume Shadowing
+
+On first run on a new machine, the `artiq9-nix-store` named volume starts empty. `build.sh` mounts it at `/nix` inside the container, which shadows the Nix store baked into the `vivado-2024.2-env` image during `docker build`. With `/nix` empty, the symlink chain `~/.nix-profile -> /nix/var/nix/profiles/per-user/builder/profile` is broken — and since the `nix` binary itself lives in the Nix store, it is also unavailable. The container exits immediately with:
+
+```
+/home/builder/entrypoint.sh: line 5: /home/builder/.nix-profile/etc/profile.d/nix.sh: No such file or directory
+```
+
+The fix, added to `build.sh`, is to detect an empty volume before the main build run and seed it by copying the image's `/nix` into the volume — mounting the volume at `/nix-target` rather than `/nix` so the image's own store remains accessible during the copy. Subsequent runs find the volume already populated and skip the seeding step.
+
 ## Nix Store File Permissions
 
 After the first successful kasli_soc build, subsequent runs failed with:
@@ -987,3 +1016,60 @@ cp: cannot create regular file '/output/top.bit': Permission denied
 ```
 
 Files copied from the Nix store inherit its read-only permissions. On the second run, `cp` could not overwrite the read-only `top.bit` already present in `/output`. The fix is to use `install -m 644` instead of `cp`, which always writes the destination with the specified permissions regardless of the source.
+
+# Debugging Timing Issues
+
+ARTIQ gateware builds produce Vivado timing reports and a routed design checkpoint in `output/<variant>/gateware/`. These can be used to investigate non-deterministic delays or unexpected behavior on hardware.
+
+## Reading the Timing Reports
+
+Key output files:
+
+- `top_timing.rpt` — post-route timing report. The summary shows WNS (Worst Negative Slack), TNS (Total Negative Slack), and WHS (Worst Hold Slack). All values must be ≥ 0 for a timing-clean build.
+- `top_route_status.rpt` — routing completion status.
+- `top_drc.rpt` — design rule check results including CDC warnings.
+
+A timing-clean build (all positive slack, zero failing endpoints) rules out metastability from setup violations. If WNS or WHS are negative, the gateware needs re-running — try different implementation strategy or placement seeds in `Vivado_init.tcl`.
+
+## Opening the Vivado GUI via Docker
+
+The routed design checkpoint `top_route.dcp` can be opened in Vivado for interactive routing and timing inspection. Vivado lives inside the `vivado-2024.2-env` Docker image, so it is run with X11 forwarding:
+
+```bash
+xhost +local:
+docker run --rm -e DISPLAY=:0 -e LIBGL_ALWAYS_SOFTWARE=1 -e _JAVA_AWT_WM_NONREPARENTING=1 -v /tmp/.X11-unix:/tmp/.X11-unix -v /path/to/output/<variant>/gateware:/dcp:ro --entrypoint bash vivado-2024.2-env -c "source /tools/Xilinx/Vivado/2024.2/settings64.sh && vivado /dcp/top_route.dcp"
+```
+
+`LIBGL_ALWAYS_SOFTWARE=1` and `_JAVA_AWT_WM_NONREPARENTING=1` are required to prevent the Vivado window from rendering as a blank white screen under XWayland.
+
+## Inspecting Routing in the GUI
+
+Once the checkpoint opens:
+
+- **Device view**: shows the physical floorplan with routing traces overlaid. Select any net in the Netlist panel and press **F4** to highlight its routing on the device.
+- **Timing paths**: `Reports → Timing → Report Timing Summary`, then click any path to cross-probe to its routed net in the device view.
+- **Schematic**: `Tools → Schematic` traces the logic between specific registers.
+
+Useful TCL console commands:
+
+```tcl
+# Inter-clock timing — all cross-domain paths and their slack
+report_clock_interaction -delay_type min_max
+
+# Highlight specific nets (e.g. Urukul SPI/DDS paths)
+highlight_objects -color blue [get_nets -hierarchical -filter {NAME =~ *urukul*}]
+
+# Worst timing paths from/to a specific hierarchy
+report_timing -from [get_cells -hierarchical -filter {NAME =~ *rtio*}] -max_paths 20
+
+# All clock domains in the design
+report_clock_networks
+```
+
+## Non-Deterministic Delays Not Caused by Routing
+
+If the timing report shows a clean build, routing is not the cause. Non-deterministic frequency output behavior is more likely caused by:
+
+- **RTIO timeline drift**: using `delay()` instead of `at_mu()` to schedule DDS updates causes latency to accumulate non-deterministically across the event queue.
+- **Urukul SYNC calibration**: the AD9910/AD9912 `SYNC_IN` delay must be calibrated per board. Without this, frequency and phase updates land in unpredictable SYSCLK cycles.
+- **SPI transaction timing**: DDS profile writes over SPI need adequate slack in the RTIO schedule or completion time varies.

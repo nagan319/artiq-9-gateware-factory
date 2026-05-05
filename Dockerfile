@@ -8,6 +8,10 @@ RUN cp /usr/local/lib/fake_udev.so /lib/x86_64-linux-gnu/libudev.so.1
 # artiq-zynq's Vivado FHS wrapper expects Vivado at /opt/Xilinx/Vivado/2024.2/
 # and nixConfig sets extra-sandbox-paths = "/opt". Symlink our install location.
 RUN ln -s /tools/Xilinx /opt/Xilinx
+# sandbox is a privileged Nix setting — only takes effect from the system-level
+# config written as root. The sipyco test suite opens loopback TCP connections
+# which the Nix sandbox blocks, preventing the entire shell environment from building.
+RUN mkdir -p /etc/nix && echo "sandbox = false" >> /etc/nix/nix.conf
 USER builder
 RUN mkdir -p /home/builder/.Xilinx/Vivado
 COPY --chown=builder:builder Vivado_init.tcl /home/builder/.Xilinx/Vivado/Vivado_init.tcl
