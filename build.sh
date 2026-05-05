@@ -18,8 +18,17 @@ if [ -z "$JSON_PATH" ]; then
     exit 1
 fi
 
+# If a bare filename is given and doesn't exist in the cwd, look in input/
+if [ "$(dirname "$JSON_PATH")" = "." ] && [ ! -f "$JSON_PATH" ]; then
+    CANDIDATE="${SCRIPT_DIR}/input/${JSON_PATH}"
+    if [ -f "$CANDIDATE" ]; then
+        JSON_PATH="$CANDIDATE"
+    fi
+fi
+
 if [ ! -f "$JSON_PATH" ]; then
     echo "ERROR: JSON file not found: $JSON_PATH"
+    echo "       Put it in input/ or pass the full path."
     exit 1
 fi
 

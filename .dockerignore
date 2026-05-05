@@ -1,5 +1,6 @@
 # Don't send build outputs or scratch dirs to the Docker daemon
 output/
+input/
 *.log
 
 # Uncomment to exclude the installer from the build context once vivado-2024.2-env

@@ -152,23 +152,14 @@ This turns it into a `tarball` so that you have it saved in case you need to bui
 After you download the `.json` config files for the gateware, do the following:
 ```
 wsl
-mv /mnt/c/Users/[USER]/Downloads/[CONFIG NAME].json ~
+mv /mnt/c/Users/[USER]/Downloads/[CONFIG NAME].json ~/artiq-gateware-factory/artiq-9-gateware-factory/input/
 ```
 
-If you want you can make a separate directory for gateware configs:
-```
-cd ~
-mkdir -p ~/json-configs/
-mv *.json json-configs
-```
-
-Now you can run the build script:
+Now you can run the build script using just the filename — it automatically finds it in `input/`:
 ```
 cd ~/artiq-gateware-factory/artiq-9-gateware-factory
-./build.sh [CONFIG LOCATION].json
+./build.sh [CONFIG NAME].json
 ```
-
-The location will be `../[CONFIG NAME].json` or `../json-configs/[CONFIG NAME].json` depending on how it's hooked up.
 
 Your files will appear in `artiq-9-gateware-factory/output/[CONFIG NAME]/` (the subfolder name matches the JSON filename without `.json`).
 
